@@ -162,10 +162,13 @@ export default function (pi: ExtensionAPI) {
 
 			const summary = (msg as { summary: string }).summary;
 			if (vision) {
-				// Expand to text head + image frames + text tail.
+				// Expand to lead-in + text head + image frames + text tail. Use the
+				// persisted lead-in (not msg.summary) so the display-only text edges
+				// appended to the summary are not injected twice; archives written
+				// before leadIn existed keep the summary as the lead block.
 				const blocks = archiveBlocks(archive, { maxFrameBytes: settings.maxFrameBytes });
 				const content = [
-					{ type: "text", text: summary },
+					{ type: "text", text: archive.leadIn ?? summary },
 					...blocks.map(block =>
 						block.type === "image"
 							? { type: "image", data: block.data as string, mimeType: block.mimeType as string }
@@ -175,18 +178,23 @@ export default function (pi: ExtensionAPI) {
 				return { role: "user", content, timestamp: msg.timestamp } as unknown as ContextMessage;
 			}
 
-			// Non-vision fallback: replay bounded archive source as plain text.
-			const plain = elideDataUrls(
-				toPlainText(
-					archive.text ??
-						[archive.textHead, archive.textTail].filter((p): p is string => !!p && p.length > 0).join("\n"),
-				),
-				"archive",
-			);
+			// Non-vision fallback: the model cannot read the frames, so replay the
+			// archive source as bounded plain text. When the summary already
+			// carries the text edges (leadIn present), replay only the imaged
+			// middle — the part the summary lacks.
+			let source =
+				archive.text ??
+				[archive.textHead, archive.textTail].filter((p): p is string => !!p && p.length > 0).join("\n");
+			if (archive.leadIn) {
+				if (archive.textHead && source.startsWith(archive.textHead)) source = source.slice(archive.textHead.length);
+				if (archive.textTail && source.endsWith(archive.textTail)) source = source.slice(0, source.length - archive.textTail.length);
+			}
+			const plain = elideDataUrls(toPlainText(source), "archive");
 			const bounded =
 				plain.length > TEXT_FALLBACK_CHARS
 					? `${plain.slice(0, TEXT_FALLBACK_CHARS / 2)}\n[…${plain.length - TEXT_FALLBACK_CHARS}ch of archived history omitted for a non-vision model…]\n${plain.slice(-TEXT_FALLBACK_CHARS / 2)}`
 					: plain;
+			if (!bounded.trim()) return msg; // summary already carries everything
 			return {
 				role: "user",
 				content: [{ type: "text", text: `${summary}\n\n${bounded}` }],

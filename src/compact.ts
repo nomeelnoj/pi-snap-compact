@@ -279,11 +279,11 @@ export function compact(preparation: CompactPreparation, options?: CompactOption
 	const { readFiles, modifiedFiles } = computeFileLists(fileOps);
 	const files = formatFileList(readFiles, modifiedFiles, fileOps.read);
 
-	let summary: string;
+	let leadIn: string;
 	if (frames.length === 0 && textHead.length === 0 && textTail.length === 0 && files.length === 0) {
-		summary = "No prior history.";
+		leadIn = "No prior history.";
 	} else {
-		summary = buildSummary({
+		leadIn = buildSummary({
 			frameCount: frames.length,
 			cols: colsDesc,
 			rows: geo.rows,
@@ -298,7 +298,22 @@ export function compact(preparation: CompactPreparation, options?: CompactOption
 		});
 	}
 
+	// The summary is what the TUI and session export display, so render the
+	// verbatim text edges into it; the imaged middle is summarized as a note
+	// (the frames themselves are attached to the model context at rebuild
+	// time, not to this display text).
+	const displayParts: string[] = [];
+	if (textHead) displayParts.push(toPlainText(textHead));
+	if (frames.length > 0) {
+		displayParts.push(
+			`[${frames.length} image frame${frames.length === 1 ? "" : "s"} of transcript history are attached to the model context between the text regions — readable by vision-capable models, not shown here]`,
+		);
+	}
+	if (textTail) displayParts.push(toPlainText(textTail));
+	const summary = displayParts.length > 0 ? `${leadIn}\n\n${displayParts.join("\n")}` : leadIn;
+
 	const archive: Archive = {
+		leadIn,
 		frames,
 		totalChars,
 		truncatedChars,

@@ -44,6 +44,10 @@ export interface Frame {
 }
 
 export interface Archive {
+	/** The summary lead-in (reading guide + file list), kept so context
+	 *  rebuilds can use it without the display-only text edges the persisted
+	 *  summary string carries. */
+	leadIn?: string;
 	/** Rendered frames, oldest → newest. Empty when everything fit in text. */
 	frames: Frame[];
 	/** Characters readable across all frames plus text regions. */
@@ -80,6 +84,7 @@ export function getArchive(details: Record<string, unknown> | undefined): Archiv
 	const textTail = typeof archive.textTail === "string" && archive.textTail.length > 0 ? archive.textTail : undefined;
 	if (frames.length === 0 && text === undefined && textHead === undefined && textTail === undefined) return undefined;
 	return {
+		...(typeof archive.leadIn === "string" && archive.leadIn.length > 0 ? { leadIn: archive.leadIn } : {}),
 		frames,
 		totalChars: typeof archive.totalChars === "number" ? archive.totalChars : 0,
 		truncatedChars: typeof archive.truncatedChars === "number" ? archive.truncatedChars : 0,
