@@ -1,21 +1,58 @@
 # @nomeelnoj/pi-snap-compact
 
-Deterministic bitmap-frame context compaction for [pi](https://github.com/earendil-works/pi-coding-agent),
-for vision-capable models.
-
-When pi's context window fills up, the default compaction asks an LLM to summarize the discarded history.
-This package replaces that LLM call with a **local, deterministic archival pass**: the discarded history is
-serialized to dense text and printed onto PNG frames using bundled pixel fonts, and the frames are re-attached
-to the context on every subsequent request. The model reads its own history back as images.
+A [Pi](https://pi.dev/) package that replaces LLM-summarization compaction with a **local, deterministic
+archival pass** for vision-capable models: discarded history is serialized to dense text and printed onto PNG
+frames using bundled pixel fonts, and the frames are re-attached to the context on every subsequent request.
+The model reads its own history back as images.
 
 No model call, no API key, no network — so it is also safe during overflow recovery.
 
 *Derived from [oh-my-pi](https://github.com/can1357/oh-my-pi)'s
 [`@oh-my-pi/snapcompact`](https://github.com/can1357/oh-my-pi/blob/main/docs/compaction.md#snapcompact-method) (MIT).
 The serialization, normalization, layout-planning, archive, and shape modules are adapted from its TypeScript
-source; the renderer is a TypeScript port of its Rust `pi-natives` crate; the Pi extension wiring, settings, and
-tests are original to this package. See [NOTICE.md](NOTICE.md) for the file-by-file breakdown and
-[Attribution](#attribution).*
+source; the renderer is a TypeScript port of its Rust `pi-natives` crate; the Pi extension wiring, on-disk frame
+storage, settings, and tests are original to this package. See [NOTICE.md](NOTICE.md) for the file-by-file
+breakdown and [Credits](#credits).*
+
+## Prerequisites
+
+- Node.js 22.19.0 or newer
+- npm 11.10.0 or newer when developing or releasing from a checkout
+- Pi (tested against Pi 0.84.4; older releases are untested)
+- A vision-capable model — compaction falls back to Pi's default LLM summarizer when the current model cannot
+  read images (`model.input` lacks `"image"`)
+
+Core Pi packages remain wildcard peer dependencies so the package uses the Pi installation that loads it. The
+`latest-pi` CI lane checks current Pi releases on an advisory basis.
+
+## Install
+
+From npm:
+
+```bash
+pi install npm:@nomeelnoj/pi-snap-compact
+```
+
+Then reload Pi:
+
+```text
+/reload
+```
+
+For a one-off run without installing:
+
+```bash
+pi -e npm:@nomeelnoj/pi-snap-compact
+```
+
+You can also load a checkout directly:
+
+```bash
+git clone https://github.com/nomeelnoj/pi-snap-compact.git
+cd pi-snap-compact
+npm ci
+pi -e "$(pwd)"
+```
 
 ## How it works
 
@@ -58,30 +95,22 @@ falling back to RGB for pathologically colorful frames), which is typically 3-5x
 The shape resolves from the model id (not just the wire API — a Claude routed through a gateway keeps its
 Claude geometry, priced for the gateway carrying the request):
 
-| Reader                       | Shape         | Frame  | Why                                                              |
-| ---------------------------- | ------------- | ------ | ---------------------------------------------------------------- |
+| Reader                          | Shape       | Frame  | Why                                                              |
+| ------------------------------- | ----------- | ------ | ---------------------------------------------------------------- |
 | Claude Opus 4.7+, Fable, Mythos | `11on16-bw` | 1932px | Largest square under Anthropic's 4,784 visual-token cap          |
-| Other Claude / unknown       | `11on16-bw`   | 1568px | 8x13 glyphs on an 11px advance (extra tracking), black ink       |
-| Gemini 3.x                   | `8on22-bw`    | 2048px | Flat 1,120-token per-image budget — larger frames are free chars |
-| GPT / Codex                  | `8on22-bw`    | 1568px | Patch billing is area-proportional; bigger frames gain nothing   |
-| Kimi                         | `8on22-bw`    | 1568px | Image processor downscales past ~1792px                          |
-| GLM                          | `8on16-bw`    | 1568px | Plain 8x13 grid at standard pitch                                |
+| Other Claude / unknown          | `11on16-bw` | 1568px | 8x13 glyphs on an 11px advance (extra tracking), black ink       |
+| Gemini 3.x                      | `8on22-bw`  | 2048px | Flat 1,120-token per-image budget — larger frames are free chars |
+| GPT / Codex                     | `8on22-bw`  | 1568px | Patch billing is area-proportional; bigger frames gain nothing   |
+| Kimi                            | `8on22-bw`  | 1568px | Image processor downscales past ~1792px                          |
+| GLM                             | `8on16-bw`  | 1568px | Plain 8x13 grid at standard pitch                                |
 
 `auto` selection is font-aware: when the default font cannot safely render the transcript, or wide CJK glyphs
 dominate it, it switches to `silver16-bw` (the bundled Silver TrueType on a 16px grid).
 
-Large archives foveate: when the imaged middle exceeds the frame budget, its own edges stay HQ while the
+Large archives foveate: when the imaged middle exceeds the frame budget, its own edges stay high quality while the
 center renders on a denser tier (same pixels per frame, tighter cell), and the oldest center pages drop first.
 `maxFrames` (default 80) is an upper limit, not a promised count; a per-request base64 payload budget
 (default 3 MB) can also drop oldest-first frames, with gap markers left in place.
-
-## Install
-
-```bash
-pi install /path/to/pi-snap-compact
-# or from npm/git once published:
-pi install npm:@nomeelnoj/pi-snap-compact
-```
 
 ## Settings
 
@@ -101,26 +130,24 @@ Configured under the `snapcompact` key in `~/.pi/agent/settings.json` or `<proje
 }
 ```
 
-| Setting           | Default   | Description                                                     |
-| ----------------- | --------- | --------------------------------------------------------------- |
-| `enabled`         | `true`    | Master switch; off = pi's default LLM compaction                |
-| `shape`           | `"auto"`  | Force a research variant (e.g. `"8on22-bw"`, `"silver16-bw"`)   |
-| `maxFrames`       | `80`      | Upper limit on archive frames per compaction (max 80)           |
-| `maxFrameBytes`   | `3000000` | Per-request base64 budget when rebuilding context (max 3 MB)    |
-| `includeThinking` | `true`    | Archive assistant reasoning sections                            |
-| `dimToolResults`  | `true`    | Print tool output in dim ink                                    |
+| Setting           | Default   | Description                                                   |
+| ----------------- | --------- | ------------------------------------------------------------- |
+| `enabled`         | `true`    | Master switch; off = pi's default LLM compaction              |
+| `shape`           | `"auto"`  | Force a research variant (e.g. `"8on22-bw"`, `"silver16-bw"`) |
+| `maxFrames`       | `80`      | Upper limit on archive frames per compaction (max 80)         |
+| `maxFrameBytes`   | `3000000` | Per-request base64 budget when rebuilding context (max 3 MB)  |
+| `includeThinking` | `true`    | Archive assistant reasoning sections                          |
+| `dimToolResults`  | `true`    | Print tool output in dim ink                                  |
 
 Env overrides: `PI_SNAPCOMPACT_ENABLED`, `PI_SNAPCOMPACT_SHAPE`, `PI_SNAPCOMPACT_MAX_FRAMES`,
 `PI_SNAPCOMPACT_VERIFY` (see [Integrity](#integrity)).
 
 Behavioral notes:
 
-- Requires a vision-capable current model (`model.input` includes `"image"`); otherwise compaction falls back
-  to pi's default summarizer.
 - Manual `/compact <instructions>` implies a directed LLM summary, so snapcompact steps aside for it.
+- Forced `shape` variants keep their geometry but are re-priced for the provider carrying the request.
 - Budgets can only be lowered. Project `.pi/settings.json` is untrusted input (it ships with a cloned
   repository), so `maxFrames` and `maxFrameBytes` are clamped to the engine ceilings above.
-- Forced `shape` variants keep their geometry but are re-priced for the provider carrying the request.
 
 ## Integrity
 
@@ -149,23 +176,45 @@ anyway, set `PI_SNAPCOMPACT_VERIFY=off` — you are then trusting every session 
 happens, so turning verification back on later needs no migration. This is an environment variable on
 purpose: a project's `.pi/settings.json` must not be able to switch it off.
 
-## Development
+**Read [SECURITY.md](SECURITY.md) before relying on this in a sensitive workflow.** It states the threat model,
+what is and is not guaranteed, and the implications that are easy to miss: compaction is not redaction (secrets
+in old tool output are kept verbatim, on disk and in the session file — *more* retention than pi's default
+summarizer), replayed history arrives as a `user`-role message, pi's own summary string is outside the
+signature, assistant reasoning is archived by default, and publishing a session publishes the archive.
 
-```bash
-npm install
-npm run typecheck
-npm test
-```
+## Inspecting frames
 
 Frames for a live session land in `<session-dir>/snapcompact-frames-<timestamp>/<sha256>.png` if you want to
 eyeball what the model sees. Files are content-addressed (the name is the SHA-256 of the PNG bytes), so reading
 order comes from the archive's `frames` list in the session file, not from the filenames; a file whose bytes no
 longer match its name is treated as missing.
 
-Layout: `extensions/index.ts` is the pi entry point; `src/` holds the library (`serialize`, `normalize`,
-`cells`, `raster`, `png`, `shapes`, `plan`, `archive`, `compact`, `settings`); `fonts/` the bundled faces.
+## Support and contributing
 
-## Attribution
+- Use the [bug report form](https://github.com/nomeelnoj/pi-snap-compact/issues/new?template=bug_report.yml)
+  for reproducible problems, or the
+  [feature request form](https://github.com/nomeelnoj/pi-snap-compact/issues/new?template=feature_request.yml)
+  for focused proposals.
+- Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) before sending a pull request.
+- See [CHANGELOG.md](CHANGELOG.md) for release history.
+
+## Package shape
+
+Pi loads the TypeScript source extension directly. The npm tarball contains only `package.json`, the source
+extension and library, the bundled fonts, `README.md`, `CHANGELOG.md`, `NOTICE.md`, and `LICENSE`; it has one runtime
+dependency (`opentype.js`, for the TTF fallback rasterizer) and no install scripts.
+
+Layout: `extensions/index.ts` is the pi entry point; `src/` holds the library (`serialize`, `normalize`,
+`cells`, `raster`, `png`, `shapes`, `plan`, `archive`, `compact`, `settings`, `integrity`); `fonts/` the bundled
+faces.
+
+## License
+
+MIT (code), including the upstream `@oh-my-pi/snapcompact` copyright notice reproduced in `LICENSE`. Fonts keep
+their own licenses — see `fonts/FONTS.md`. `NOTICE.md` lists which files derive from upstream.
+
+## Credits
 
 - Core algorithm and most of the library code derive from
   [`@oh-my-pi/snapcompact`](https://github.com/can1357/oh-my-pi/tree/main/packages/snapcompact) by Can Bölük
@@ -174,8 +223,7 @@ Layout: `extensions/index.ts` is the pi entry point; `src/` holds the library (`
   and the evals.
 - Bundled fonts: X.org misc-fixed (public domain), Unscii (public domain, Viznut), Silver (CC BY 4.0,
   Poppy Works) — see `fonts/FONTS.md`.
-
-## License
-
-MIT (code), including the upstream `@oh-my-pi/snapcompact` copyright notice reproduced in `LICENSE`. Fonts keep
-their own licenses — see `fonts/FONTS.md`. `NOTICE.md` lists which files derive from upstream.
+- Repository conventions — the CI `check` gate, package-content verification and clean-install smoke test
+  (`scripts/`), GitHub Actions CI/publish workflows, and community-health files — follow the conventions
+  established by [pi-copy-code](https://github.com/penumbral-labs/pi-copy-code) (MIT) and are extended for
+  this implementation.

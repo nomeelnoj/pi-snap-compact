@@ -2,11 +2,27 @@
 	"name": "@nomeelnoj/pi-snap-compact",
 	"version": "0.1.0",
 	"description": "Deterministic bitmap-frame context compaction for vision-capable models in pi — no LLM summarization call",
+	"author": "Jon Leemon",
 	"license": "MIT",
 	"keywords": [
-		"pi-package"
+		"pi-package",
+		"pi-extension",
+		"compaction",
+		"context",
+		"vision"
 	],
 	"type": "module",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/nomeelnoj/pi-snap-compact.git"
+	},
+	"homepage": "https://github.com/nomeelnoj/pi-snap-compact#readme",
+	"bugs": {
+		"url": "https://github.com/nomeelnoj/pi-snap-compact/issues"
+	},
+	"engines": {
+		"node": ">=22.19.0"
+	},
 	"pi": {
 		"extensions": [
 			"./extensions/index.ts"
@@ -15,22 +31,33 @@
 	"files": [
 		"extensions",
 		"src",
-		"fonts"
+		"fonts",
+		"CHANGELOG.md",
+		"NOTICE.md"
 	],
 	"scripts": {
 		"typecheck": "tsc --noEmit",
-		"test": "node --experimental-strip-types --test test/*.test.ts"
+		"test": "node --experimental-strip-types --test test/*.test.ts",
+		"verify-package": "node scripts/verify-package.mjs",
+		"smoke-package": "node scripts/smoke-package.mjs",
+		"check": "npm run typecheck && npm test && npm run verify-package && npm run smoke-package"
+	},
+	"publishConfig": {
+		"access": "public"
 	},
 	"dependencies": {
 		"opentype.js": "^1.3.4"
 	},
-	"devDependencies": {
-		"@types/node": "^24.0.0",
-		"@types/opentype.js": "^1.3.10",
-		"typescript": "^5.6.0"
-	},
 	"peerDependencies": {
 		"@earendil-works/pi-ai": "*",
 		"@earendil-works/pi-coding-agent": "*"
+	},
+	"devDependencies": {
+		"@earendil-works/pi-ai": "0.85.1",
+		"@earendil-works/pi-coding-agent": "0.85.1",
+		"@types/node": "24.19.0",
+		"@types/opentype.js": "1.3.10",
+		"jiti": "2.7.0",
+		"typescript": "5.9.3"
 	}
 }
