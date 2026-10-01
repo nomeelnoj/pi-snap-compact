@@ -238,6 +238,14 @@ export function denseCompanion(high: Shape, api?: string): Shape {
 	return gridGeometry(low).capacity > gridGeometry(high).capacity ? low : high;
 }
 
+/** Human-readable one-line shape description for logs and status displays. */
+export function describeShape(shape: ShapeGeometry & { frameTokens?: number }): string {
+	const layout = shape.columns === 2 ? "two-column" : shape.repeat > 1 ? `repeat x${shape.repeat}` : "grid";
+	const dim = shape.dimStopwords ? "+dim" : "";
+	const tokens = shape.frameTokens !== undefined ? `, ~${shape.frameTokens.toLocaleString()} tok/frame` : "";
+	return `${shape.font} ${shape.cellW}x${shape.cellH} ${layout} @${shape.frameSize}px, ${shape.ink}${dim} ink${tokens}`;
+}
+
 // ---------------------------------------------------------------------------
 // Geometry
 // ---------------------------------------------------------------------------
@@ -245,7 +253,7 @@ export function denseCompanion(high: Shape, api?: string): Shape {
 export interface GridGeometry {
 	/** Characters per row (per-column line width for two-column shapes). */
 	cols: number;
-	/** Text rows per frame (unique lines; repeat copies excluded). */
+	/** Text rows per frame (unique lines; repeat copies excluded, banner strip excluded). */
 	rows: number;
 	/** Characters that fit one frame (nominal for doc shapes). */
 	capacity: number;
@@ -254,9 +262,23 @@ export interface GridGeometry {
 /** Char cells between the two columns of a doc layout. */
 export const DOC_GUTTER = 3;
 
+/**
+ * Every frame reserves one cell-row strip at the top for a banner that labels
+ * the image as an archived transcript page, so the provenance boundary is
+ * visible inside the pixels the model reads rather than only in surrounding
+ * text. The strip is drawn once (never repeated) in black ink, and its height
+ * is taken out of the content grid so frames stay within `frameSize`.
+ */
+export const BANNER_ROWS = 1;
+
+/** Pixel height of the banner strip for `shape`. */
+export function bannerHeight(shape: ShapeGeometry): number {
+	return BANNER_ROWS * shape.cellH;
+}
+
 export function gridGeometry(shape: ShapeGeometry, size: number = shape.frameSize): GridGeometry {
 	const gridCols = Math.floor(size / shape.cellW);
-	const rows = Math.floor(size / shape.cellH / shape.repeat);
+	const rows = Math.max(1, Math.floor((size - bannerHeight(shape)) / shape.cellH / shape.repeat));
 	if (shape.columns === 2) {
 		const cols = Math.floor((gridCols - DOC_GUTTER) / 2);
 		return { cols, rows, capacity: 2 * cols * rows };

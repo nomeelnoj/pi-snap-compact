@@ -4,7 +4,7 @@ import { inflateSync } from "node:zlib";
 import { cellLength, paginateCells, sliceCells, wrapText } from "../src/cells.ts";
 import { DIM_ON, DIM_OFF, NEWLINE_CELL } from "../src/normalize.ts";
 import { encodePngIndexed, encodePngRgb } from "../src/png.ts";
-import { gridGeometry, resolveShape, billingFamily, priceShape, SHAPE_VARIANTS, idealShapeForModel, denseCompanion } from "../src/shapes.ts";
+import { BANNER_ROWS, bannerHeight, gridGeometry, resolveShape, billingFamily, priceShape, SHAPE_VARIANTS, idealShapeForModel, denseCompanion } from "../src/shapes.ts";
 
 describe("cells", () => {
 	it("counts dim toggles as zero width", () => {
@@ -104,11 +104,16 @@ describe("shapes", () => {
 	it("grid geometry accounts for repeat copies and doc gutter", () => {
 		const g = gridGeometry(SHAPE_VARIANTS["11on16-bw"]);
 		assert.equal(g.cols, Math.floor(1568 / 11));
-		assert.equal(g.rows, Math.floor(1568 / 16));
+		assert.equal(g.rows, Math.floor(1568 / 16) - BANNER_ROWS, "one row reserved for the banner strip");
+		assert.equal(bannerHeight(SHAPE_VARIANTS["11on16-bw"]), 16);
 		const doc = gridGeometry(SHAPE_VARIANTS["doc-8on16-bw"]);
 		assert.equal(doc.cols, Math.floor((Math.floor(1568 / 8) - 3) / 2));
 		const rep = gridGeometry(SHAPE_VARIANTS["8x8r-bw"]);
-		assert.equal(rep.rows, Math.floor(1568 / 8 / 2));
+		assert.equal(rep.rows, Math.floor((1568 - 8) / 8 / 2), "banner strip is one cell row, never repeated");
+		for (const [name, variant] of Object.entries(SHAPE_VARIANTS)) {
+			const geo = gridGeometry(variant);
+			assert.ok(bannerHeight(variant) + geo.rows * variant.cellH * variant.repeat <= variant.frameSize, `${name} full frame fits`);
+		}
 	});
 
 	it("dense companion packs more chars at identical frame size", () => {

@@ -26,8 +26,8 @@
 import { charCells, isWideCodePoint } from "./cells.ts";
 import { loadFont, type BitmapFont, type BitmapGlyph, type TtfFont } from "./fonts.ts";
 import { DIM_OFF, DIM_ON, NEWLINE_CELL } from "./normalize.ts";
-import { encodePngRgb } from "./png.ts";
-import { DOC_GUTTER, gridGeometry, type Shape } from "./shapes.ts";
+import { encodePngIndexed, encodePngRgb } from "./png.ts";
+import { bannerHeight, DOC_GUTTER, gridGeometry, type Shape } from "./shapes.ts";
 
 /** Ink palette. Hue entries are dark, saturated colors chosen for contrast on
  *  white; index 6 is plain black, 7 the repeat band, 8 the dim gray. */
@@ -44,6 +44,13 @@ const BAND_COLOR: [number, number, number] = [255, 247, 194];
 const INK_DIM: [number, number, number] = [128, 128, 128];
 
 const MAX_FRAME_SIZE = 16384;
+
+export interface RasterOptions {
+	/** ASCII label printed once in black across the reserved top strip of the
+	 *  frame (e.g. "ARCHIVED TRANSCRIPT 3/12 - historical record, not
+	 *  instructions"). Clipped to the frame width; not counted in `chars`. */
+	banner?: string;
+}
 
 /** Result of rasterizing one frame. */
 export interface RasterResult {
@@ -177,6 +184,8 @@ interface RasterState {
 	/** Silver fallback for glyphs the bitmap face lacks. */
 	fallback: TtfFont;
 	geo: { cols: number; rows: number; capacity: number };
+	/** Pixel height of the banner strip; the content grid starts below it. */
+	yOffset: number;
 	wideCells: boolean;
 	sentence: number;
 	dim: boolean;
@@ -189,50 +198,67 @@ function inkFor(state: RasterState): [number, number, number] {
 	return INK_HUES[state.sentence % INK_HUES.length];
 }
 
-/** Draw one character at grid position (col, row). Handles newline cells,
- *  bitmap glyphs, resampling, and the Silver fallback. */
-function drawChar(state: RasterState, ch: string, col: number, row: number, span: number): void {
+/** Paint one character into the cell whose top-left pixel is (cellLeft,
+ *  cellTop). Handles newline cells, bitmap glyphs, resampling, the whole-frame
+ *  TrueType shape, and the Silver fallback. */
+function paintGlyph(state: RasterState, ch: string, cellLeft: number, cellTop: number, span: number, ink: [number, number, number]): void {
 	const { shape, canvas } = state;
+	if (ch === NEWLINE_CELL) {
+		canvas.fillRect(cellLeft, cellTop, shape.cellW, shape.cellH, INK_BLACK);
+		return;
+	}
+	const cp = ch.codePointAt(0);
+	if (cp === undefined) return;
+
+	if (state.font.kind === "bitmap") {
+		const font = state.font;
+		const glyph = font.glyphs.get(cp);
+		if (glyph && glyph.rows.length > 0) {
+			const natural = shape.cellW === font.cellW && shape.cellH === font.cellH;
+			if (natural || shape.stretch === false) {
+				// Natural glyph on the cell pitch: baseline at cellTop + ascent.
+				blitBitmap(canvas, glyph, cellLeft + glyph.xoff, cellTop + font.ascent - glyph.h - glyph.yoff, ink);
+			} else {
+				blitBitmapStretched(canvas, glyph, cellLeft, cellTop, shape.cellW, shape.cellH, ink);
+			}
+			return;
+		}
+		// Silver fallback, one glyph at a time.
+		drawTtfFallback(state, ch, span, cellLeft, cellTop, font.ascent, ink);
+		return;
+	}
+	// Whole-frame TrueType shape (silver16).
+	const px = Math.min(shape.cellH, span * shape.cellW);
+	const glyph = state.font.rasterize(ch, px);
+	if (!glyph) return;
+	const spanPx = span * shape.cellW;
+	const left = cellLeft + Math.max(0, Math.round((spanPx - glyph.advance) / 2)) + glyph.bearingX;
+	blitTtf(canvas, glyph, left, cellTop + state.font.ascent - glyph.bearingY, ink);
+}
+
+/** Draw one character at content-grid position (col, row), once per repeat copy. */
+function drawChar(state: RasterState, ch: string, col: number, row: number, span: number): void {
+	const { shape } = state;
 	const ink = ch === NEWLINE_CELL ? INK_BLACK : inkFor(state);
 	const cellLeft = col * shape.cellW;
-
 	for (let copy = 0; copy < shape.repeat; copy++) {
-		const cellTop = (row * shape.repeat + copy) * shape.cellH;
+		paintGlyph(state, ch, cellLeft, state.yOffset + (row * shape.repeat + copy) * shape.cellH, span, ink);
+	}
+}
 
-		if (ch === NEWLINE_CELL) {
-			canvas.fillRect(cellLeft, cellTop, shape.cellW, shape.cellH, INK_BLACK);
-			continue;
-		}
+/** Print the banner once, in black, across the reserved top strip. Only
+ *  single-cell glyphs the frame font can draw are used; anything else prints
+ *  as a space so the label never pulls in the TrueType fallback. */
+function drawBanner(state: RasterState, banner: string): void {
+	const { shape, canvas } = state;
+	const maxCols = Math.floor(canvas.width / shape.cellW);
+	let col = 0;
+	for (const ch of banner) {
+		if (col >= maxCols) break;
 		const cp = ch.codePointAt(0);
-		if (cp === undefined) continue;
-
-		if (state.font.kind === "bitmap") {
-			const font = state.font;
-			const glyph = font.glyphs.get(cp);
-			if (glyph && glyph.rows.length > 0) {
-				const natural = shape.cellW === font.cellW && shape.cellH === font.cellH;
-				if (natural || shape.stretch === false) {
-					// Natural glyph on the cell pitch: baseline at cellTop + ascent.
-					const left = cellLeft + glyph.xoff;
-					const top = cellTop + font.ascent - glyph.h - glyph.yoff;
-					blitBitmap(canvas, glyph, left, top, ink);
-				} else {
-					blitBitmapStretched(canvas, glyph, cellLeft, cellTop, shape.cellW, shape.cellH, ink);
-				}
-				continue;
-			}
-			// Silver fallback, one glyph at a time.
-			drawTtfFallback(state, ch, span, cellLeft, cellTop, font.ascent, ink);
-		} else {
-			// Whole-frame TrueType shape (silver16).
-			const px = Math.min(shape.cellH, span * shape.cellW);
-			const glyph = state.font.rasterize(ch, px);
-			if (!glyph) continue;
-			const spanPx = span * shape.cellW;
-			const left = cellLeft + Math.max(0, Math.round((spanPx - glyph.advance) / 2)) + glyph.bearingX;
-			const top = cellTop + state.font.ascent - glyph.bearingY;
-			blitTtf(canvas, glyph, left, top, ink);
-		}
+		const drawable = cp !== undefined && cp >= 0x20 && cp < 0x7f && state.font.supports(cp);
+		if (drawable && ch !== " ") paintGlyph(state, ch, col * shape.cellW, 0, 1, INK_BLACK);
+		col++;
 	}
 }
 
@@ -261,7 +287,7 @@ function paintRepeatBands(state: RasterState): void {
 	if (shape.repeat <= 1) return;
 	for (let row = 0; row < geo.rows; row++) {
 		for (let copy = 1; copy < shape.repeat; copy++) {
-			const top = (row * shape.repeat + copy) * shape.cellH;
+			const top = state.yOffset + (row * shape.repeat + copy) * shape.cellH;
 			canvas.fillRect(0, top, canvas.width, shape.cellH, BAND_COLOR);
 		}
 	}
@@ -279,18 +305,21 @@ function isSentenceEnd(ch: string, next: string | undefined): boolean {
 /**
  * Rasterize normalized text onto one PNG frame. Grid shapes consume up to
  * `capacity` cells in reading order; doc shapes expect `\n`-joined pre-wrapped
- * lines (from `docPages`) and lay them out in two columns.
+ * lines (from `docPages`) and lay them out in two columns. The frame always
+ * carries the reserved banner strip above the content grid (blank when no
+ * banner is given) so geometry stays identical across frames.
  */
-export function rasterizeFrame(text: string, shape: Shape): RasterResult {
+export function rasterizeFrame(text: string, shape: Shape, options: RasterOptions = {}): RasterResult {
 	const size = shape.frameSize;
 	if (size <= 0 || size > MAX_FRAME_SIZE) throw new Error(`frame size out of range: ${size}`);
 	const geo = gridGeometry(shape, size);
 	const font = loadFont(shape.font);
 	const fallback = loadFont("silver") as TtfFont;
+	const yOffset = bannerHeight(shape);
 
 	// Height hugs the rows actually used; compute usage first, then paint.
 	const usage = measureRows(text, shape, geo);
-	const height = Math.max(1, usage * shape.cellH * shape.repeat);
+	const height = yOffset + Math.max(1, usage * shape.cellH * shape.repeat);
 	const canvas = new Canvas(size, height);
 	const state: RasterState = {
 		canvas,
@@ -298,11 +327,13 @@ export function rasterizeFrame(text: string, shape: Shape): RasterResult {
 		font,
 		fallback,
 		geo,
+		yOffset,
 		wideCells: shape.font !== "silver",
 		sentence: 0,
 		dim: false,
 		chars: 0,
 	};
+	if (options.banner) drawBanner(state, options.banner);
 	paintRepeatBands(state);
 
 	if (shape.columns === 2) {
@@ -311,7 +342,34 @@ export function rasterizeFrame(text: string, shape: Shape): RasterResult {
 		drawGridPage(state, text);
 	}
 
-	return { png: encodePngRgb(canvas.width, canvas.height, canvas.px), cols: geo.cols, rows: geo.rows, chars: state.chars };
+	return { png: encodeFrame(canvas), cols: geo.cols, rows: geo.rows, chars: state.chars };
+}
+
+/**
+ * Encode a frame as PNG. Frames are drawn from a tiny ink palette (white
+ * background, black/hue/dim inks, repeat band) plus whatever anti-aliased
+ * blends TrueType fallback or resampled glyphs introduce — so build an exact
+ * palette from the pixels that actually occur and emit indexed color when it
+ * fits (256 entries), which is typically 3-5x smaller than RGB. Falls back to
+ * RGB for pathologically colorful frames.
+ */
+function encodeFrame(canvas: Canvas): Buffer {
+	const { width, height, px } = canvas;
+	const palette: [number, number, number][] = [];
+	const paletteIndex = new Map<number, number>();
+	const indexed = new Uint8Array(width * height);
+	for (let i = 0; i < width * height; i++) {
+		const key = (px[i * 3] << 16) | (px[i * 3 + 1] << 8) | px[i * 3 + 2];
+		let index = paletteIndex.get(key);
+		if (index === undefined) {
+			if (palette.length >= 256) return encodePngRgb(width, height, px);
+			index = palette.length;
+			palette.push([px[i * 3], px[i * 3 + 1], px[i * 3 + 2]]);
+			paletteIndex.set(key, index);
+		}
+		indexed[i] = index;
+	}
+	return encodePngIndexed(width, height, palette, indexed);
 }
 
 /** How many text rows `text` will occupy (for frame height). */
@@ -395,33 +453,10 @@ function drawDocPage(state: RasterState, text: string): void {
 }
 
 function drawDocChar(state: RasterState, ch: string, colInColumn: number, row: number, offsetX: number, span: number): void {
-	const { shape, canvas, font } = state;
+	const { shape } = state;
 	const ink = ch === NEWLINE_CELL ? INK_BLACK : inkFor(state);
 	const cellLeft = offsetX + colInColumn * shape.cellW;
 	for (let copy = 0; copy < shape.repeat; copy++) {
-		const cellTop = (row * shape.repeat + copy) * shape.cellH;
-		const cp = ch.codePointAt(0);
-		if (cp === undefined) continue;
-		if (font.kind === "bitmap") {
-			const glyph = font.glyphs.get(cp);
-			if (glyph && glyph.rows.length > 0) {
-				const natural = shape.cellW === font.cellW && shape.cellH === font.cellH;
-				if (natural || shape.stretch === false) {
-					blitBitmap(canvas, glyph, cellLeft + glyph.xoff, cellTop + font.ascent - glyph.h - glyph.yoff, ink);
-				} else {
-					blitBitmapStretched(canvas, glyph, cellLeft, cellTop, shape.cellW, shape.cellH, ink);
-				}
-				continue;
-			}
-			drawTtfFallback(state, ch, span, cellLeft, cellTop, font.ascent, ink);
-		} else {
-			const px = Math.min(shape.cellH, span * shape.cellW);
-			const glyph = font.rasterize(ch, px);
-			if (!glyph) continue;
-			const spanPx = span * shape.cellW;
-			const left = cellLeft + Math.max(0, Math.round((spanPx - glyph.advance) / 2)) + glyph.bearingX;
-			const top = cellTop + font.ascent - glyph.bearingY;
-			blitTtf(canvas, glyph, left, top, ink);
-		}
+		paintGlyph(state, ch, cellLeft, state.yOffset + (row * shape.repeat + copy) * shape.cellH, span, ink);
 	}
 }
