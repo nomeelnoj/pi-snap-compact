@@ -1,0 +1,49 @@
+name: Feature request
+description: Propose a focused improvement to pi-snap-compact
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for proposing an improvement. Explain the concrete compaction workflow it would improve.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem or limitation do you encounter?
+      placeholder: Describe the workflow and why current behavior is insufficient.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: What should the extension do instead?
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface does this concern?
+      options:
+        - Compaction pass (session_before_compact)
+        - Frame rendering / fonts / shapes
+        - Context rebuild (frames re-injected into requests)
+        - /snapcompact command or footer status
+        - Settings and configuration
+        - Not surface-specific
+    validations:
+      required: true
+  - type: input
+    id: pi-version
+    attributes:
+      label: Pi version
+      placeholder: e.g. 0.84.4
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: How do you handle this workflow today?

@@ -1,0 +1,84 @@
+name: Bug report
+description: Report reproducible incorrect behavior in pi-snap-compact
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: Do not report vulnerabilities here. Use the private GitHub Security Advisory link in SECURITY.md.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include the model, the compaction trigger, and what you observed.
+      placeholder: |
+        1. Run Pi with model ...
+        2. Work until compaction triggers (or /compact) ...
+        3. Ask the model about archived content ...
+        4. Observe ...
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface is affected?
+      options:
+        - Compaction pass (session_before_compact)
+        - Frame rendering / legibility
+        - Context rebuild (frames re-injected into requests)
+        - /snapcompact command or footer status
+        - On-disk frame files
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      placeholder: e.g. anthropic/claude-sonnet-4
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: e.g. macOS 15.5, Ubuntu 24.04, Windows 11
+    validations:
+      required: true
+  - type: input
+    id: pi-version
+    attributes:
+      label: Pi version
+      placeholder: e.g. 0.84.4
+    validations:
+      required: true
+  - type: input
+    id: package-version
+    attributes:
+      label: pi-snap-compact version
+      placeholder: e.g. 0.1.0
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Additional output
+      description: Paste relevant errors or screenshots. Remove sensitive prompt text, session content, and environment details.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I can reproduce this with the package version listed above.
+          required: true
+        - label: This report does not contain a vulnerability, sensitive prompt text, or session content.
+          required: true
