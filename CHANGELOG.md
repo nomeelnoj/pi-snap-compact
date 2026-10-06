@@ -3,6 +3,13 @@
 All notable changes are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- Claude Opus 5+ model ids (e.g. `claude-opus-5-5`) now resolve to the 1932px high-res frame instead of falling back
+  to 1568px, and date-stamped Opus 4 ids (e.g. `claude-opus-4-20250514`) no longer match the Opus 4.7+ rule.
+
 ## [0.1.0] - 2026-10-02
 
 ### Added

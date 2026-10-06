@@ -188,8 +188,10 @@ const HIGH_RES_ANTHROPIC: IdealShape = { variant: "11on16-bw", frameSize: HIGH_R
 const MODEL_RULES: readonly (readonly [RegExp, IdealShape])[] = [
 	// Versionless fable/mythos aliases never carry a numeric version.
 	[/claude.*(fable|mythos)/i, HIGH_RES_ANTHROPIC],
-	// Opus 4.7+ reads high-res natively (same recall, a third fewer frames).
-	[/claude.*opus[-.]4[-.](?:[7-9]|[1-9]\d)/i, HIGH_RES_ANTHROPIC],
+	// Opus 4.7+ and Opus 5+ read high-res natively (same recall, a third fewer
+	// frames). The lookahead keeps date-stamped ids such as
+	// claude-opus-4-20250514 from reading as a two-digit minor version.
+	[/claude.*opus[-.](?:4[-.](?:[7-9]|[1-9]\d)|[5-9]|[1-9]\d)(?!\d)/i, HIGH_RES_ANTHROPIC],
 	// Older Claude lines downscale past 1568px.
 	[/claude/i, { variant: "11on16-bw" }],
 	// Gemini 3.x flat per-image budget: bigger frames are free chars.
