@@ -126,6 +126,12 @@ describe("shapes", () => {
 	it("idealShapeForModel is regex-driven and version-aware", () => {
 		assert.equal(idealShapeForModel("claude-fable-latest")?.frameSize, 1932);
 		assert.equal(idealShapeForModel("claude-opus-4-5")?.frameSize, undefined);
+		assert.equal(idealShapeForModel("claude-opus-4-20250514")?.frameSize, undefined, "date stamp is not a minor version");
+		assert.equal(idealShapeForModel("claude-opus-4-7")?.frameSize, 1932);
+		assert.equal(idealShapeForModel("claude-opus-5")?.frameSize, 1932);
+		assert.equal(idealShapeForModel("claude-opus-5-5")?.frameSize, 1932);
+		assert.equal(idealShapeForModel("anthropic.claude-opus-5-5-v1:0")?.frameSize, 1932);
+		assert.equal(idealShapeForModel("claude-sonnet-5-5")?.frameSize, undefined, "only Opus is measured high-res");
 		assert.equal(idealShapeForModel("unknown-model-9000"), undefined);
 	});
 });

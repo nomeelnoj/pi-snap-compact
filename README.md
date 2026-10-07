@@ -97,7 +97,7 @@ Claude geometry, priced for the gateway carrying the request):
 
 | Reader                          | Shape       | Frame  | Why                                                              |
 | ------------------------------- | ----------- | ------ | ---------------------------------------------------------------- |
-| Claude Opus 4.7+, Fable, Mythos | `11on16-bw` | 1932px | Largest square under Anthropic's 4,784 visual-token cap          |
+| Claude Opus 4.7+, 5+, Fable, Mythos | `11on16-bw` | 1932px | Largest square under Anthropic's 4,784 visual-token cap          |
 | Other Claude / unknown          | `11on16-bw` | 1568px | 8x13 glyphs on an 11px advance (extra tracking), black ink       |
 | Gemini 3.x                      | `8on22-bw`  | 2048px | Flat 1,120-token per-image budget — larger frames are free chars |
 | GPT / Codex                     | `8on22-bw`  | 1568px | Patch billing is area-proportional; bigger frames gain nothing   |
