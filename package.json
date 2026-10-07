@@ -1,6 +1,6 @@
 {
 	"name": "@nomeelnoj/pi-snap-compact",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Deterministic bitmap-frame context compaction for vision-capable models in pi — no LLM summarization call",
 	"author": "Jon Leemon",
 	"license": "MIT",
